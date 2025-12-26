@@ -19,7 +19,14 @@ class PredictionResult:
     away_goals_dist: Optional[np.ndarray] = None
     
     def get_over_under_prob(self, threshold: float = 2.5) -> Tuple[float, float]:
-        """Calculate Over/Under probabilities for total goals."""
+        """Calculate Over/Under probabilities for total goals.
+        
+        For threshold 2.5:
+        - Under 2.5: includes 0, 1, 2 goals (indices 0, 1, 2)
+        - Over 2.5: includes 3+ goals (indices 3, 4, ...)
+        
+        The calculation int(threshold) + 1 = 3, so [:3] gives us indices 0, 1, 2 which is correct.
+        """
         total_goals_mean = self.home_goals_pred + self.away_goals_pred
         
         # If we have distributions, use them
@@ -27,7 +34,8 @@ class PredictionResult:
             # Convolve distributions to get total goals distribution
             total_dist = np.convolve(self.home_goals_dist, self.away_goals_dist)
             
-            # Calculate Over/Under from distribution
+            # Calculate Under probability (up to and including floor(threshold))
+            # For 2.5, this is goals 0, 1, 2 (indices [:3])
             under_prob = total_dist[:int(threshold) + 1].sum()
             over_prob = 1.0 - under_prob
             

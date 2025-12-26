@@ -180,7 +180,9 @@ class RollingStatsCalculator:
     
     def _compute_rolling_avg(self, values: list, window: int) -> float:
         """Compute rolling average for a specific window."""
-        if len(values) < self.min_matches:
+        # Require sufficient data: max of min_matches or window size
+        min_required = max(self.min_matches, window)
+        if len(values) < min_required:
             return None
         
         if not values:

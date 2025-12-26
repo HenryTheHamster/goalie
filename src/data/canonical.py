@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import pandas as pd
 
@@ -56,7 +56,7 @@ class DataCanonicalizer:
         
         return df
     
-    def _filter_training_matches(self, df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    def _filter_training_matches(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """Split data into training-valid and tracking-only matches."""
         # Training: only completed matches
         training_mask = df["fixture_status_short"].isin(MatchStatus.training_statuses())

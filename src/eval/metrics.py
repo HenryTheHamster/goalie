@@ -26,8 +26,13 @@ class MetricsCalculator:
     @staticmethod
     def calculate_poisson_log_likelihood(y_true: pd.Series, lambdas: List[float]) -> float:
         """Calculate Poisson log-likelihood (higher is better)."""
-        ll = sum(poisson.logpmf(int(y), max(0.001, lam)) for y, lam in zip(y_true, lambdas))
-        return ll
+        # Pre-process lambdas to ensure they're positive (more efficient)
+        lambdas_safe = np.maximum(0.001, np.array(lambdas))
+        y_true_array = np.array(y_true, dtype=int)
+        
+        # Vectorized calculation
+        ll = poisson.logpmf(y_true_array, lambdas_safe).sum()
+        return float(ll)
     
     @staticmethod
     def calculate_accuracy_within_n(y_true: pd.Series, y_pred: List[float], n: int = 1) -> float:
