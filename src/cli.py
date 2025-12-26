@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 
 from src.config import Config, LeagueConfig
 from src.data import DataCanonicalizer, TeamCanonicalizer
+from src.features import FeatureEngineer
 from src.ingest import APIFootballClient
 
 # Load environment variables
@@ -145,6 +146,33 @@ def list_data(api_key: str):
         click.echo(f"  - {f.name}")
     if not canonical_teams:
         click.echo("  (none)")
+
+
+@main.command()
+@click.option("--api-key", envvar="API_FOOTBALL_KEY", help="API-Football API key (for config)")
+@click.option("--cutoff", type=str, help="Snapshot cutoff (e.g., T-7d, T-3d, T-24h, T-6h, T-1h)")
+def features(api_key: str, cutoff: str):
+    """Engineer features from canonical matches."""
+    if api_key:
+        config = Config.default(api_key=api_key)
+    else:
+        config = Config.default(api_key="test-key-for-paths-only")
+    
+    # Load canonical matches
+    click.echo("Loading canonical matches...")
+    canonicalizer = DataCanonicalizer(config.paths)
+    matches = canonicalizer.load_canonical_matches(latest=True)
+    
+    # Engineer features
+    engineer = FeatureEngineer(config)
+    features_df = engineer.engineer_features(matches, cutoff=None)
+    
+    # Save features
+    features_with_context = engineer.save_features(features_df, matches, cutoff=None)
+    
+    click.echo(f"\n✓ Feature engineering complete")
+    click.echo(f"  Matches: {len(features_df)}")
+    click.echo(f"  Features: {len(features_df.columns) - 1}")
 
 
 if __name__ == "__main__":
