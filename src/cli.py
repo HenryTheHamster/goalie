@@ -9,8 +9,10 @@ from dotenv import load_dotenv
 
 from src.config import Config, LeagueConfig
 from src.data import DataCanonicalizer, TeamCanonicalizer
+from src.eval import BacktestSimulator, MetricsCalculator
 from src.features import FeatureEngineer
 from src.ingest import APIFootballClient
+from src.models import ModelTrainer
 
 # Load environment variables
 load_dotenv()
@@ -173,6 +175,51 @@ def features(api_key: str, cutoff: str):
     click.echo(f"\n✓ Feature engineering complete")
     click.echo(f"  Matches: {len(features_df)}")
     click.echo(f"  Features: {len(features_df.columns) - 1}")
+
+
+@main.command()
+@click.option("--api-key", envvar="API_FOOTBALL_KEY", help="API-Football API key (for config)")
+def train(api_key: str):
+    """Train prediction models on engineered features."""
+    if api_key:
+        config = Config.default(api_key=api_key)
+    else:
+        config = Config.default(api_key="test-key-for-paths-only")
+    
+    # Load features
+    click.echo("Loading features...")
+    engineer = FeatureEngineer(config)
+    features = engineer.load_latest_features()
+    
+    # Initialize and train models
+    trainer = ModelTrainer(config)
+    trainer.initialize_models()
+    
+    X_test, y_home_test, y_away_test = trainer.train_all(features)
+    
+    # Generate predictions on test set
+    click.echo("\n=== Generating Test Predictions ===")
+    predictions = trainer.predict_all(X_test)
+    
+    # Evaluate models
+    click.echo("\n=== Evaluating Models ===")
+    for model_name, preds in predictions.items():
+        metrics = MetricsCalculator.evaluate_model(preds, y_home_test, y_away_test)
+        MetricsCalculator.print_metrics(model_name, metrics)
+        
+        # Diagnostic P&L backtest
+        pl_results = BacktestSimulator.simulate_simple_pl(preds, y_home_test, y_away_test)
+        click.echo(f"\nDiagnostic P&L (Over/Under 2.5):")
+        click.echo(f"  Total bets: {pl_results['total_bets']}")
+        click.echo(f"  Correct: {pl_results['correct_bets']}")
+        click.echo(f"  Accuracy: {pl_results['accuracy']:.2%}")
+        click.echo(f"  Total P&L: ${pl_results['total_pl']:.2f}")
+        click.echo(f"  ROI: {pl_results['roi']:.2%}")
+    
+    # Save predictions
+    trainer.save_predictions(predictions, features.loc[X_test.index])
+    
+    click.echo("\n✓ Training and evaluation complete")
 
 
 if __name__ == "__main__":
