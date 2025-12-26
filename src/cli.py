@@ -13,6 +13,7 @@ from src.eval import BacktestSimulator, MetricsCalculator
 from src.features import FeatureEngineer
 from src.ingest import APIFootballClient
 from src.models import ModelTrainer
+from src.reports import DuckDBQueryLayer, MarkdownReportGenerator
 
 # Load environment variables
 load_dotenv()
@@ -179,12 +180,21 @@ def features(api_key: str, cutoff: str):
 
 @main.command()
 @click.option("--api-key", envvar="API_FOOTBALL_KEY", help="API-Football API key (for config)")
-def train(api_key: str):
+@click.option("--run-id", help="Run ID for tracking (auto-generated if not provided)")
+def train(api_key: str, run_id: str):
     """Train prediction models on engineered features."""
+    from datetime import datetime, timezone
+    
     if api_key:
         config = Config.default(api_key=api_key)
     else:
         config = Config.default(api_key="test-key-for-paths-only")
+    
+    # Generate run ID if not provided
+    if not run_id:
+        run_id = f"run_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
+    
+    click.echo(f"Run ID: {run_id}")
     
     # Load features
     click.echo("Loading features...")
@@ -203,8 +213,11 @@ def train(api_key: str):
     
     # Evaluate models
     click.echo("\n=== Evaluating Models ===")
+    all_metrics = {}
+    
     for model_name, preds in predictions.items():
         metrics = MetricsCalculator.evaluate_model(preds, y_home_test, y_away_test)
+        all_metrics[model_name] = metrics
         MetricsCalculator.print_metrics(model_name, metrics)
         
         # Diagnostic P&L backtest
@@ -219,7 +232,68 @@ def train(api_key: str):
     # Save predictions
     trainer.save_predictions(predictions, features.loc[X_test.index])
     
-    click.echo("\n✓ Training and evaluation complete")
+    # Generate report
+    click.echo("\n=== Generating Report ===")
+    report_gen = MarkdownReportGenerator(config)
+    report_path = report_gen.save_report(run_id, all_metrics)
+    
+    click.echo(f"\n✓ Training and evaluation complete")
+    click.echo(f"✓ Report: {report_path}")
+
+
+@main.command()
+@click.option("--api-key", envvar="API_FOOTBALL_KEY", help="API-Football API key (for config)")
+def report(api_key: str):
+    """Generate analysis report using DuckDB."""
+    if api_key:
+        config = Config.default(api_key=api_key)
+    else:
+        config = Config.default(api_key="test-key-for-paths-only")
+    
+    click.echo("=== Data Analysis Report ===\n")
+    
+    query_layer = DuckDBQueryLayer(config.paths)
+    
+    # Match summary
+    click.echo("Match Summary:")
+    try:
+        match_summary = query_layer.get_match_summary()
+        click.echo(match_summary.to_string(index=False))
+    except Exception as e:
+        click.echo(f"  (unavailable: {e})")
+    
+    click.echo("\n" + "="*50 + "\n")
+    
+    # Team statistics
+    click.echo("Top 10 Teams by Points:")
+    try:
+        team_stats = query_layer.get_team_statistics()
+        click.echo(team_stats.head(10).to_string(index=False))
+    except Exception as e:
+        click.echo(f"  (unavailable: {e})")
+    
+    click.echo("\n" + "="*50 + "\n")
+    
+    # Prediction performance
+    click.echo("Prediction Performance:")
+    try:
+        pred_perf = query_layer.get_prediction_performance()
+        click.echo(pred_perf.to_string(index=False))
+    except Exception as e:
+        click.echo(f"  (unavailable: {e})")
+    
+    click.echo("\n" + "="*50 + "\n")
+    
+    # Over/Under performance
+    click.echo("Over/Under 2.5 Performance:")
+    try:
+        ou_perf = query_layer.get_over_under_performance(threshold=2.5)
+        click.echo(ou_perf.to_string(index=False))
+    except Exception as e:
+        click.echo(f"  (unavailable: {e})")
+    
+    query_layer.close()
+    click.echo("\n✓ Analysis complete")
 
 
 if __name__ == "__main__":

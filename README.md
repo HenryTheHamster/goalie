@@ -83,36 +83,79 @@ export API_FOOTBALL_KEY="your-api-key-here"
 
 ## Usage
 
-### Check API Connection
+### Quick Start
+
+Run the complete demo pipeline with synthetic data:
 ```bash
-goalie health-check
+bash scripts/demo.sh
 ```
 
-### Ingest Data
+### Step-by-Step Workflow
+
+#### 1. Check API Connection
+```bash
+python -m src.cli health-check
+```
+
+#### 2. Ingest Data from API-Football
 ```bash
 # Ingest fixtures and teams for all configured leagues
-goalie ingest
+python -m src.cli ingest
 
 # Ingest specific league
-goalie ingest --league-id 39  # Premier League
+python -m src.cli ingest --league-id 39  # Premier League
 
 # Ingest only fixtures
-goalie ingest --no-teams
+python -m src.cli ingest --no-teams
 
 # Include leagues catalog
-goalie ingest --leagues
+python -m src.cli ingest --leagues
 ```
 
-### Canonicalize Data
+#### 3. Canonicalize Data
+Transform raw API data into training-ready format:
 ```bash
-# Transform raw data to canonical format
-goalie canonicalize
+python -m src.cli canonicalize
 ```
 
-### List Available Data
+#### 4. Engineer Features
+Generate features with leakage protection:
 ```bash
-goalie list-data
+python -m src.cli features
 ```
+
+#### 5. Train Models
+Train Poisson baseline and XGBoost models:
+```bash
+python -m src.cli train --run-id my_run
+```
+
+This command will:
+- Train both baseline and XGBoost models
+- Evaluate on test set
+- Generate predictions with Over/Under probabilities
+- Create a Markdown report with all metrics
+- Save predictions to Parquet files
+
+#### 6. Generate Analysis Report
+Query and analyze results using DuckDB:
+```bash
+python -m src.cli report
+```
+
+#### 7. List Available Data
+```bash
+python -m src.cli list-data
+```
+
+### Using Synthetic Data for Testing
+
+Generate synthetic test data without API calls:
+```bash
+python scripts/generate_test_data.py
+```
+
+This creates realistic synthetic match data for development and testing.
 
 ## Configuration
 
@@ -136,13 +179,84 @@ Currently implemented:
 - ✅ Training/tracking data split
 - ✅ Basic CLI interface
 
-Coming soon:
-- Feature engineering (Elo, EWMA, Rolling)
-- Model implementations (Baseline, XGBoost, Bayesian)
-- Evaluation metrics and calibration
-- DuckDB query layer
-- Per-run reporting
-- Full test coverage
+### Implemented (Phase 2)
+- ✅ Feature engineering (Elo, EWMA, Rolling statistics)
+- ✅ Elo-style attack/defence ratings with leakage protection
+- ✅ EWMA and rolling average features
+- ✅ Feature dictionary for interpretability
+- ✅ Model implementations (Poisson baseline, XGBoost)
+- ✅ Goal distribution predictions (home/away)
+- ✅ Over/Under probability calculations
+- ✅ Evaluation metrics (MAE, RMSE, log-likelihood, calibration)
+- ✅ Brier score for probabilistic predictions
+- ✅ Diagnostic P&L backtest (not for trading)
+- ✅ DuckDB query layer for analysis
+- ✅ Per-run Markdown report generation
+- ✅ Full CLI with train, features, report commands
+- ✅ Synthetic data generation for testing
+
+### Coming Soon
+- Unit tests for core modules
+- Integration tests for full pipeline
+- Bayesian model implementation
+- Advanced calibration plots
+- Feature importance visualization
+- Model persistence and loading
+- YAML configuration support
+- Time-series cross-validation
+- Snapshot cutoff implementations (T-7d, T-3d, etc.)
+
+## Example Output
+
+After running `python -m src.cli train --run-id demo`, you'll get:
+
+**Console Output:**
+```
+=== poisson_baseline Metrics ===
+Home Goals:
+  MAE: 1.145
+  RMSE: 1.347
+  Log-Likelihood: -65.64
+  Accuracy (±1): 45.00%
+
+Away Goals:
+  MAE: 0.785
+  RMSE: 0.907
+  Log-Likelihood: -51.02
+  Accuracy (±1): 62.50%
+
+Total Goals:
+  MAE: 1.284
+
+Probabilistic:
+  Brier Score: 0.7914
+```
+
+**Generated Files:**
+- `artifacts/runs/demo/report.md` - Comprehensive Markdown report
+- `artifacts/parquet/predictions/predictions_*.parquet` - Predictions with probabilities
+- `artifacts/parquet/features/features_*.parquet` - Engineered features
+- `artifacts/parquet/features/feature_dict_*.parquet` - Feature metadata
+
+## Architecture Highlights
+
+### Leakage Protection
+- **Temporal Ordering**: All features respect match chronology
+- **No Future Data**: Features computed only from past matches
+- **Odds Safeguard**: Odds disabled by default, requires explicit flag
+- **Validation**: Automated leakage detection at feature engineering stage
+
+### Interpretability
+- **Feature Dictionary**: Every feature documented with name, description, group
+- **Feature Groups**: Supports ablation studies (enable/disable feature sets)
+- **Model Comparison**: Side-by-side evaluation of multiple models
+- **Transparent Metrics**: Clear reporting of all evaluation metrics
+
+### Data Quality
+- **Status Filtering**: Only completed matches (FT, AET, PEN) for training
+- **Deduplication**: Fixture-level deduplication with most recent data
+- **UTC Timestamps**: Enforced timezone consistency
+- **Quality Checks**: Automated validation of data integrity
 
 ## License
 
